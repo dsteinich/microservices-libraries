@@ -12,6 +12,7 @@ import com.rabbitmq.client.Envelope;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,7 +68,11 @@ public class MicroserviceConsumer extends DefaultConsumer  {
 		HashMap<String, Object> errorParams = new HashMap<>();
 		errorParams.put("eventType", "error");
 		errorParams.put("errorType", sourceException.getClass().getName());
-		msgService.sendMessage(requestId, serviceRequestId, errorParams, sourceException.getMessage().getBytes());
+		String msg = sourceException.getMessage();
+		if(StringUtils.isBlank(msg)) {
+			msg = "";
+		}
+		msgService.sendMessage(requestId, serviceRequestId, errorParams, msg.getBytes());
 	}
 
 	private String getStringFromHeaders(Map<String, Object> params, String key) {
