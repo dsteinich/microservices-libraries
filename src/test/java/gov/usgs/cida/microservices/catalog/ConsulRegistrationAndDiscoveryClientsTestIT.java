@@ -6,6 +6,7 @@ import gov.usgs.cida.microservices.config.ServiceConfig;
 import gov.usgs.cida.microservices.config.ServiceConfigBuilder;
 import gov.usgs.cida.microservices.discovery.ConsulDiscoveryClient;
 import gov.usgs.cida.microservices.registration.ConsulRegistrationClient;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,20 +14,25 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
 import java.util.Set;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.cxf.helpers.FileUtils;
 import org.apache.http.client.utils.URIBuilder;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
+import org.junit.Ignore;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Ignore //TODO reenable when we start using consul again
 public class ConsulRegistrationAndDiscoveryClientsTestIT {
 
 	private static final Logger logger = LoggerFactory.getLogger(ConsulRegistrationAndDiscoveryClientsTestIT.class);
