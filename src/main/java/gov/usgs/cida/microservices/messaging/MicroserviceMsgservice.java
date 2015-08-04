@@ -5,7 +5,6 @@ import com.rabbitmq.client.AMQP;
 
 import gov.usgs.cida.microservices.api.messaging.MessagingClient;
 import gov.usgs.cida.microservices.api.messaging.MicroserviceHandler;
-import gov.usgs.cida.microservices.util.MessageUtils;
 
 import com.rabbitmq.client.AMQP.Queue.DeclareOk;
 
@@ -25,15 +24,8 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Consumer;
 
 import java.io.Closeable;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Set;
-
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-
-import org.apache.commons.lang3.StringUtils;
 
 /**
  *
@@ -43,10 +35,6 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 
 	private static final Logger log = LoggerFactory.getLogger(MicroserviceMsgservice.class);
 
-	public final static String MQ_HOST_JNDI_NAME = "messaging.service.host";
-	public final static String MQ_USER_JNDI_NAME = "messaging.service.user";
-	public final static String MQ_PASS_JNDI_NAME = "messaging.service.password";
-	
 	private final String host;
 	private final String exchange;
 	private final String username;
@@ -57,75 +45,8 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 
 	private final String serviceName;
 	private final Set<Class<? extends MicroserviceHandler>> microserviceHandlers;
-
-	public static MicroserviceMsgservice INSTANCE = null;
-	public static String SERVICE_NAME = null;
-	public static Set<Class<? extends MicroserviceHandler>> HANDLERS = Collections.EMPTY_SET;
-
-	public static String setServiceName(String name) {
-		if (StringUtils.isBlank(SERVICE_NAME)) {
-			if (StringUtils.isNotBlank(name)) {
-				SERVICE_NAME = name;
-				log.info("Set service name: {}", SERVICE_NAME);
-			} else {
-				log.error("BLANK SERVICE NAME NOT ALLOWED: {}", name);
-			}
-		} else {
-			log.error("SERVICE NAME ALREADY SPECIFIED. NEW: {} OLD: {}", name, SERVICE_NAME);
-		}
-		return SERVICE_NAME;
-	}
-
-	public static Set<Class<? extends MicroserviceHandler>> setHandlers(Set<Class<? extends MicroserviceHandler>> handlers) {
-		if (null != handlers && !handlers.isEmpty()) {
-			HANDLERS = handlers;
-		} else {
-			log.error("INVALID HANDLER SET");
-		}
-		return HANDLERS;
-	}
-
-	public static MicroserviceMsgservice getInstance(String serviceName) {
-		setServiceName(serviceName);
-		MicroserviceMsgservice result = getInstance();
-		return result;
-	}
-
-	public static MicroserviceMsgservice getInstance() {
-		MicroserviceMsgservice result = null;
-
-		if (null != SERVICE_NAME) {
-			if (null == INSTANCE) {
-				try {
-					INSTANCE = new MicroserviceMsgservice();
-				} catch (Exception e) {
-					log.error("Could not init msg service", e);
-				}
-			}
-			result = INSTANCE;
-		} else {
-			log.error("SERVICE NAME NOT SPECIFIED!");
-		}
-
-		return result;
-	}
 	
-	private static String getJNDIValue(String var) {
-		String result;
-		try {
-			Context ctx = new InitialContext();
-			result =  (String) ctx.lookup("java:comp/env/" + var);
-		} catch (NamingException ex) {
-			result = "";
-		}
-		return result;
-	}
-	
-	public MicroserviceMsgservice() throws IOException {
-		this(getJNDIValue(MQ_HOST_JNDI_NAME), "amq.headers", getJNDIValue(MQ_USER_JNDI_NAME), getJNDIValue(MQ_PASS_JNDI_NAME));
-	}
-
-	public MicroserviceMsgservice(String host, String exchange, String username, String password) throws IOException {
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, String username, String password) throws IOException {
 		this.host = host;
 		this.exchange = exchange;
 		this.username = username;
@@ -144,13 +65,13 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		Connection connection = Connections.create(conFactory, config);
 		conn = connection;
 
-		this.serviceName = SERVICE_NAME;
+		this.serviceName = inServiceName;
 		log.info("THIS IS MY SERVICE NAME: " + this.serviceName);
 
-		this.microserviceHandlers = HANDLERS;
+		this.microserviceHandlers = inHandlers;
 		log.info("I'VE GOT {} HANDLERS", this.microserviceHandlers.size());
 
-		for (Class<? extends MicroserviceHandler> clazz : HANDLERS) {
+		for (Class<? extends MicroserviceHandler> clazz : inHandlers) {
 			String queueName = null;
 			try {
 				Channel channel = getChannel();
