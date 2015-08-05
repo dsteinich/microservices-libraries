@@ -171,4 +171,15 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		}
 		return result;
 	}
+	
+	public void declareQueue(String queueName) {
+		try {
+			Channel channel = getChannel();
+			DeclareOk ack = channel.queueDeclare(queueName, false, false, false, null);
+			ack.getQueue();
+			channel.close();
+		} catch (Exception e) {
+			log.error("Could not declare queue", e);
+		}
+	}
 }
