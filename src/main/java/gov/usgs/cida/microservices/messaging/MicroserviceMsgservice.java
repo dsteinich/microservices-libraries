@@ -83,31 +83,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 				log.error("Could not declare queue", e);
 			}
 			if (null != queueName) {
-				try {
-					MicroserviceHandler bindingHandler = clazz.newInstance();
-					Channel bindingChannel = getChannel();
-					Map<String, Object> defaultBinding = new HashMap<>();
-					defaultBinding.put("x-match", "all");
-					defaultBinding.put("msrvServiceName", this.serviceName);
-					defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
-					bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
-					for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
-						bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
-					}
-					bindingChannel.close();
-
-					int numberOfConsumers = 3;
-					for (int i = 0; i < numberOfConsumers; i++) {
-						//new instances just in case someone makes a non-threadsafe handler
-						MicroserviceHandler handler = clazz.newInstance();
-						Channel channel = getChannel();
-						Consumer consumer = new MicroserviceConsumer(channel, handler, this);
-						channel.basicConsume(queueName, true, consumer);
-						log.info("Channel {} now listening for {} messages, handled by {}", channel.getChannelNumber(), queueName, clazz.getSimpleName());
-					}
-				} catch (Exception e) {
-					log.error("Could not register consumers", e);
-				}
+				autoBindConsumer(queueName, clazz);
 			}
 		}
 
@@ -128,6 +104,55 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	
 	public String getServiceName() {
 		return this.serviceName;
+	}
+	
+	private void autoBindConsumer(String queueName, Class<? extends MicroserviceHandler> clazz) {
+		try {
+			MicroserviceHandler bindingHandler = clazz.newInstance();
+			Channel bindingChannel = getChannel();
+			Map<String, Object> defaultBinding = new HashMap<>();
+			defaultBinding.put("x-match", "all");
+			defaultBinding.put("msrvServiceName", this.serviceName);
+			defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
+			bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
+			for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
+				bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
+			}
+			bindingChannel.close();
+
+			int numberOfConsumers = 3;
+			for (int i = 0; i < numberOfConsumers; i++) {
+				//new instances just in case someone makes a non-threadsafe handler
+				MicroserviceHandler handler = clazz.newInstance();
+				Channel channel = getChannel();
+				Consumer consumer = new MicroserviceConsumer(channel, handler, this);
+				channel.basicConsume(queueName, true, consumer);
+				log.info("Channel {} now listening for {} messages, handled by {}", channel.getChannelNumber(), queueName, clazz.getSimpleName());
+			}
+		} catch (Exception e) {
+			log.error("Could not register consumers", e);
+		}
+	}
+	
+	public void bindConsumer(String queueName, MicroserviceHandler bindingHandler) {
+		try {
+			Channel bindingChannel = getChannel();
+			Map<String, Object> defaultBinding = new HashMap<>();
+			defaultBinding.put("x-match", "all");
+			defaultBinding.put("msrvServiceName", this.serviceName);
+			defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
+			bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
+			for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
+				bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
+			}
+			bindingChannel.close();
+			Channel channel = getChannel();
+			Consumer consumer = new MicroserviceConsumer(channel, bindingHandler, this);
+			channel.basicConsume(queueName, true, consumer);
+			log.info("Channel {} now listening for {} messages", channel.getChannelNumber(), queueName);
+		} catch (Exception e) {
+			log.error("Could not register consumers", e);
+		}
 	}
 	
 	@Override
@@ -180,7 +205,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	public void declareQueueForType(String serviceName, String eventType) {
 		try {
 			Channel channel = getChannel();
-			DeclareOk ack = channel.queueDeclare(serviceName, true, false, false, null);
+			DeclareOk ack = channel.queueDeclare(serviceName, true, false, true, null);
 			ack.getQueue();
 
 			Map<String, Object> bindingOptions = new HashMap<>();
