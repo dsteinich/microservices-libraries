@@ -141,6 +141,9 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			defaultBinding.put("x-match", "all");
 			defaultBinding.put("msrvServiceName", this.serviceName);
 			defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
+			//@thongsav
+			//defaultBinding might not always have a HandlerType (arg[2] for defaultBinding) might be causing the error.
+			//Would cause queueBind to potentially fail which means no consumers registered.
 			bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
 			for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
 				bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
