@@ -22,6 +22,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Consumer;
+import com.rabbitmq.client.MessageProperties;
 
 import java.io.Closeable;
 import java.util.HashMap;
@@ -147,6 +148,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			AMQP.BasicProperties props = new AMQP.BasicProperties.Builder()
 				.headers(modHeaders)
 				.build();
+			
+			//MsgProps.P_T_P should make it so that the messages aren't deleted from the queue.
+			//Use this to test if messages are sent.
+			//Msgs don't see to make it to the queues.
 			channel.basicPublish(exchange, "", props, message);
 		} catch (Exception e) {
 			log.error("Could not send message {}", message);
@@ -172,11 +177,18 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		return result;
 	}
 	
-	public void declareQueue(String queueName) {
+	public void declareQueueForType(String serviceName, String eventType) {
 		try {
 			Channel channel = getChannel();
-			DeclareOk ack = channel.queueDeclare(queueName, true, false, false, null);
+			DeclareOk ack = channel.queueDeclare(serviceName, true, false, false, null);
 			ack.getQueue();
+
+			Map<String, Object> bindingOptions = new HashMap<>();
+			bindingOptions.put("x-match", "all");
+			bindingOptions.put("serviceName", serviceName);
+			bindingOptions.put("eventType", eventType);
+
+			channel.queueBind(serviceName, this.exchange, "", bindingOptions);
 			channel.close();
 		} catch (Exception e) {
 			log.error("Could not declare queue", e);
