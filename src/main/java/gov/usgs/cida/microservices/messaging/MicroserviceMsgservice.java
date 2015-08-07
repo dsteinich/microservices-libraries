@@ -22,7 +22,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Consumer;
-import com.rabbitmq.client.MessageProperties;
+import com.rabbitmq.client.GetResponse;
 
 import java.io.Closeable;
 import java.util.HashMap;
@@ -57,6 +57,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		factory.setHost(this.host);
 		factory.setUsername(this.username);
 		factory.setPassword(this.password);
+		
 		factory.setExceptionHandler(new MicroserviceExceptionHandler());
 
 		this.conFactory = factory;
@@ -175,11 +176,8 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			log.trace("Sending message with Headers {}", new Gson().toJson(modHeaders, Map.class));
 			AMQP.BasicProperties props = new AMQP.BasicProperties.Builder()
 				.headers(modHeaders)
+				.expiration("300000") //5 minute expiration time on all sent messages
 				.build();
-			
-			//MsgProps.P_T_P should make it so that the messages aren't deleted from the queue.
-			//Use this to test if messages are sent.
-			//Msgs don't see to make it to the queues.
 			channel.basicPublish(exchange, "", props, message);
 		} catch (Exception e) {
 			log.error("Could not send message {}", message);
@@ -205,6 +203,12 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		return result;
 	}
 	
+	/**
+	 * Declare a queue to hold a serviceName/eventType combo
+	 * 
+	 * @param serviceName
+	 * @param eventType
+	 */
 	public void declareQueueForType(String serviceName, String eventType) {
 		try {
 			Channel channel = getChannel();
@@ -221,5 +225,24 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		} catch (Exception e) {
 			log.error("Could not declare queue", e);
 		}
+	}
+	
+	/**
+	 * 
+	 * @param queue the queye to pull a message from
+	 * @param consumeMessage true to consume message, false to leave message in queue
+	 * @return
+	 */
+	public byte[] getMessage(String queue, boolean consumeMessage) {
+		byte[] result = null;
+		try {
+			Channel channel = getChannel();
+			GetResponse resp = channel.basicGet(queue, false);
+			result = resp.getBody();
+			channel.close();
+		} catch (Exception e) {
+		}
+		
+		return result;
 	}
 }
