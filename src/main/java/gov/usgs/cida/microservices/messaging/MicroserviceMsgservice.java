@@ -5,7 +5,6 @@ import com.rabbitmq.client.AMQP;
 
 import gov.usgs.cida.microservices.api.messaging.MessagingClient;
 import gov.usgs.cida.microservices.api.messaging.MicroserviceHandler;
-import gov.usgs.cida.microservices.util.MessageUtils;
 
 import com.rabbitmq.client.AMQP.Queue.DeclareOk;
 
@@ -23,17 +22,11 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Consumer;
+import com.rabbitmq.client.GetResponse;
 
 import java.io.Closeable;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Set;
-
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-
-import org.apache.commons.lang3.StringUtils;
 
 /**
  *
@@ -43,10 +36,6 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 
 	private static final Logger log = LoggerFactory.getLogger(MicroserviceMsgservice.class);
 
-	public final static String MQ_HOST_JNDI_NAME = "messaging.service.host";
-	public final static String MQ_USER_JNDI_NAME = "messaging.service.user";
-	public final static String MQ_PASS_JNDI_NAME = "messaging.service.password";
-	
 	private final String host;
 	private final String exchange;
 	private final String username;
@@ -57,75 +46,8 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 
 	private final String serviceName;
 	private final Set<Class<? extends MicroserviceHandler>> microserviceHandlers;
-
-	public static MicroserviceMsgservice INSTANCE = null;
-	public static String SERVICE_NAME = null;
-	public static Set<Class<? extends MicroserviceHandler>> HANDLERS = Collections.EMPTY_SET;
-
-	public static String setServiceName(String name) {
-		if (StringUtils.isBlank(SERVICE_NAME)) {
-			if (StringUtils.isNotBlank(name)) {
-				SERVICE_NAME = name;
-				log.info("Set service name: {}", SERVICE_NAME);
-			} else {
-				log.error("BLANK SERVICE NAME NOT ALLOWED: {}", name);
-			}
-		} else {
-			log.error("SERVICE NAME ALREADY SPECIFIED. NEW: {} OLD: {}", name, SERVICE_NAME);
-		}
-		return SERVICE_NAME;
-	}
-
-	public static Set<Class<? extends MicroserviceHandler>> setHandlers(Set<Class<? extends MicroserviceHandler>> handlers) {
-		if (null != handlers && !handlers.isEmpty()) {
-			HANDLERS = handlers;
-		} else {
-			log.error("INVALID HANDLER SET");
-		}
-		return HANDLERS;
-	}
-
-	public static MicroserviceMsgservice getInstance(String serviceName) {
-		setServiceName(serviceName);
-		MicroserviceMsgservice result = getInstance();
-		return result;
-	}
-
-	public static MicroserviceMsgservice getInstance() {
-		MicroserviceMsgservice result = null;
-
-		if (null != SERVICE_NAME) {
-			if (null == INSTANCE) {
-				try {
-					INSTANCE = new MicroserviceMsgservice();
-				} catch (Exception e) {
-					log.error("Could not init msg service", e);
-				}
-			}
-			result = INSTANCE;
-		} else {
-			log.error("SERVICE NAME NOT SPECIFIED!");
-		}
-
-		return result;
-	}
 	
-	private static String getJNDIValue(String var) {
-		String result;
-		try {
-			Context ctx = new InitialContext();
-			result =  (String) ctx.lookup("java:comp/env/" + var);
-		} catch (NamingException ex) {
-			result = "";
-		}
-		return result;
-	}
-	
-	public MicroserviceMsgservice() throws IOException {
-		this(getJNDIValue(MQ_HOST_JNDI_NAME), "amq.headers", getJNDIValue(MQ_USER_JNDI_NAME), getJNDIValue(MQ_PASS_JNDI_NAME));
-	}
-
-	public MicroserviceMsgservice(String host, String exchange, String username, String password) throws IOException {
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, String username, String password) throws IOException {
 		this.host = host;
 		this.exchange = exchange;
 		this.username = username;
@@ -135,6 +57,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		factory.setHost(this.host);
 		factory.setUsername(this.username);
 		factory.setPassword(this.password);
+		
 		factory.setExceptionHandler(new MicroserviceExceptionHandler());
 
 		this.conFactory = factory;
@@ -144,13 +67,13 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		Connection connection = Connections.create(conFactory, config);
 		conn = connection;
 
-		this.serviceName = SERVICE_NAME;
+		this.serviceName = inServiceName;
 		log.info("THIS IS MY SERVICE NAME: " + this.serviceName);
 
-		this.microserviceHandlers = HANDLERS;
+		this.microserviceHandlers = inHandlers;
 		log.info("I'VE GOT {} HANDLERS", this.microserviceHandlers.size());
 
-		for (Class<? extends MicroserviceHandler> clazz : HANDLERS) {
+		for (Class<? extends MicroserviceHandler> clazz : inHandlers) {
 			String queueName = null;
 			try {
 				Channel channel = getChannel();
@@ -161,31 +84,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 				log.error("Could not declare queue", e);
 			}
 			if (null != queueName) {
-				try {
-					MicroserviceHandler bindingHandler = clazz.newInstance();
-					Channel bindingChannel = getChannel();
-					Map<String, Object> defaultBinding = new HashMap<>();
-					defaultBinding.put("x-match", "all");
-					defaultBinding.put("msrvServiceName", this.serviceName);
-					defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
-					bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
-					for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
-						bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
-					}
-					bindingChannel.close();
-
-					int numberOfConsumers = 3;
-					for (int i = 0; i < numberOfConsumers; i++) {
-						//new instances just in case someone makes a non-threadsafe handler
-						MicroserviceHandler handler = clazz.newInstance();
-						Channel channel = getChannel();
-						Consumer consumer = new MicroserviceConsumer(channel, handler, this);
-						channel.basicConsume(queueName, true, consumer);
-						log.info("Channel {} now listening for {} messages, handled by {}", channel.getChannelNumber(), queueName, clazz.getSimpleName());
-					}
-				} catch (Exception e) {
-					log.error("Could not register consumers", e);
-				}
+				autoBindConsumer(queueName, clazz);
 			}
 		}
 
@@ -208,6 +107,58 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		return this.serviceName;
 	}
 	
+	private void autoBindConsumer(String queueName, Class<? extends MicroserviceHandler> clazz) {
+		try {
+			MicroserviceHandler bindingHandler = clazz.newInstance();
+			Channel bindingChannel = getChannel();
+			Map<String, Object> defaultBinding = new HashMap<>();
+			defaultBinding.put("x-match", "all");
+			defaultBinding.put("msrvServiceName", this.serviceName);
+			defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
+			bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
+			for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
+				bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
+			}
+			bindingChannel.close();
+
+			int numberOfConsumers = 3;
+			for (int i = 0; i < numberOfConsumers; i++) {
+				//new instances just in case someone makes a non-threadsafe handler
+				MicroserviceHandler handler = clazz.newInstance();
+				Channel channel = getChannel();
+				Consumer consumer = new MicroserviceConsumer(channel, handler, this);
+				channel.basicConsume(queueName, true, consumer);
+				log.info("Channel {} now listening for {} messages, handled by {}", channel.getChannelNumber(), queueName, clazz.getSimpleName());
+			}
+		} catch (Exception e) {
+			log.error("Could not register consumers", e);
+		}
+	}
+	
+	public void bindConsumer(String queueName, MicroserviceHandler bindingHandler) {
+		try {
+			Channel bindingChannel = getChannel();
+			Map<String, Object> defaultBinding = new HashMap<>();
+			defaultBinding.put("x-match", "all");
+			defaultBinding.put("msrvServiceName", this.serviceName);
+			defaultBinding.put("msrvHandlerType", bindingHandler.getClass().getSimpleName());
+			//@thongsav
+			//defaultBinding might not always have a HandlerType (arg[2] for defaultBinding) might be causing the error.
+			//Would cause queueBind to potentially fail which means no consumers registered.
+			bindingChannel.queueBind(queueName, this.exchange, "", defaultBinding);
+			for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
+				bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
+			}
+			bindingChannel.close();
+			Channel channel = getChannel();
+			Consumer consumer = new MicroserviceConsumer(channel, bindingHandler, this);
+			channel.basicConsume(queueName, true, consumer);
+			log.info("Channel {} now listening for {} messages", channel.getChannelNumber(), queueName);
+		} catch (Exception e) {
+			log.error("Could not register consumers", e);
+		}
+	}
+	
 	@Override
 	public void sendMessage(String requestId, String serviceRequestId, Map<String, Object> headers, byte[] message) {
 		Channel channel = null;
@@ -225,6 +176,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			log.trace("Sending message with Headers {}", new Gson().toJson(modHeaders, Map.class));
 			AMQP.BasicProperties props = new AMQP.BasicProperties.Builder()
 				.headers(modHeaders)
+				.expiration("300000") //5 minute expiration time on all sent messages
 				.build();
 			channel.basicPublish(exchange, "", props, message);
 		} catch (Exception e) {
@@ -248,6 +200,49 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 				result = true;
 			}
 		}
+		return result;
+	}
+	
+	/**
+	 * Declare a queue to hold a serviceName/eventType combo
+	 * 
+	 * @param serviceName
+	 * @param eventType
+	 */
+	public void declareQueueForType(String serviceName, String eventType) {
+		try {
+			Channel channel = getChannel();
+			DeclareOk ack = channel.queueDeclare(serviceName, true, false, true, null);
+			ack.getQueue();
+
+			Map<String, Object> bindingOptions = new HashMap<>();
+			bindingOptions.put("x-match", "all");
+			bindingOptions.put("serviceName", serviceName);
+			bindingOptions.put("eventType", eventType);
+
+			channel.queueBind(serviceName, this.exchange, "", bindingOptions);
+			channel.close();
+		} catch (Exception e) {
+			log.error("Could not declare queue", e);
+		}
+	}
+	
+	/**
+	 * 
+	 * @param queue the queye to pull a message from
+	 * @param consumeMessage true to consume message, false to leave message in queue
+	 * @return
+	 */
+	public byte[] getMessage(String queue, boolean consumeMessage) {
+		byte[] result = null;
+		try {
+			Channel channel = getChannel();
+			GetResponse resp = channel.basicGet(queue, false);
+			result = resp.getBody();
+			channel.close();
+		} catch (Exception e) {
+		}
+		
 		return result;
 	}
 }
