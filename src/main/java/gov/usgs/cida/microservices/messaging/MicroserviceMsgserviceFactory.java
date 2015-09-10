@@ -24,6 +24,8 @@ public final class MicroserviceMsgserviceFactory {
 	public final static String MQ_HOST_JNDI_NAME = "messaging.service.host";
 	public final static String MQ_USER_JNDI_NAME = "messaging.service.user";
 	public final static String MQ_PASS_JNDI_NAME = "messaging.service.password";
+	public final static String MQ_CONSUMERS_JNDI_NAME = "messaging.consumers.per.service";
+	private final static Integer DEFAULT_NUMBER_OF_CONSUMERS_PER_SERVICE = 10;
 	
 	public static HashMap<String, MicroserviceMsgserviceFactory> FACTORY_INSTANCES = new HashMap<>();
 
@@ -49,7 +51,17 @@ public final class MicroserviceMsgserviceFactory {
 	public MicroserviceMsgservice buildMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers) {
 		log.debug("Instantiating new MicroserviceMsgservice for {}", serviceName);
 		try {
-			serviceInstance = new MicroserviceMsgservice(getJNDIValue(MQ_HOST_JNDI_NAME), "amq.headers", serviceName, inHandlers, getJNDIValue(MQ_USER_JNDI_NAME), getJNDIValue(MQ_PASS_JNDI_NAME));
+			Integer consumers = DEFAULT_NUMBER_OF_CONSUMERS_PER_SERVICE;
+			String consumersString = getJNDIValue(MQ_CONSUMERS_JNDI_NAME);
+			if(consumers != null) {
+				try {
+					consumers = Integer.parseInt(consumersString);
+				} catch (Exception e) {
+					log.warn("Invalid integer specified for {}", MQ_CONSUMERS_JNDI_NAME);
+				}
+			}
+			serviceInstance = new MicroserviceMsgservice(getJNDIValue(MQ_HOST_JNDI_NAME), "amq.headers", serviceName, 
+					inHandlers, consumers, getJNDIValue(MQ_USER_JNDI_NAME), getJNDIValue(MQ_PASS_JNDI_NAME));
 		} catch (IOException e) {
 			throw new RuntimeException("Unable to instantiate MicroserviceMsgservice", e);
 		}
