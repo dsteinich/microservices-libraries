@@ -47,11 +47,14 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	private final String serviceName;
 	private final Set<Class<? extends MicroserviceHandler>> microserviceHandlers;
 	
-	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, String username, String password) throws IOException {
+	private Integer numberOfConsumers;
+	
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password) throws IOException {
 		this.host = host;
 		this.exchange = exchange;
 		this.username = username;
 		this.password = password;
+		this.numberOfConsumers = numberOfConsumers;
 
 		ConnectionFactory factory = new ConnectionFactory();
 		factory.setHost(this.host);
@@ -117,7 +120,6 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			}
 			bindingChannel.close();
 
-			int numberOfConsumers = 3;
 			for (int i = 0; i < numberOfConsumers; i++) {
 				//new instances just in case someone makes a non-threadsafe handler
 				MicroserviceHandler handler = clazz.newInstance();
