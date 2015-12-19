@@ -68,6 +68,7 @@ public class MicroserviceConsumer extends DefaultConsumer  {
 		HashMap<String, Object> errorParams = new HashMap<>();
 		errorParams.put("eventType", "error");
 		errorParams.put("errorType", sourceException.getClass().getName());
+		errorParams.put("errorSource", msgService.getServiceName());
 		String msg = sourceException.getMessage();
 		if(StringUtils.isBlank(msg)) {
 			msg = "";
