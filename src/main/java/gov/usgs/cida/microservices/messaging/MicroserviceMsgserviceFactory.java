@@ -1,5 +1,6 @@
 package gov.usgs.cida.microservices.messaging;
 
+import gov.usgs.cida.config.DynamicReadOnlyProperties;
 import gov.usgs.cida.microservices.api.messaging.MicroserviceHandler;
 
 import java.io.IOException;
@@ -10,8 +11,6 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.Set;
 
-import javax.naming.Context;
-import javax.naming.InitialContext;
 import javax.naming.NamingException;
 
 /**
@@ -36,6 +35,19 @@ public final class MicroserviceMsgserviceFactory {
 		this.serviceName = serviceName;
 	}
 	
+	private static DynamicReadOnlyProperties props = null;
+	
+	private static DynamicReadOnlyProperties getPropInstance() {
+		if (null == props) {
+			try {
+				props = new DynamicReadOnlyProperties().addJNDIContexts();
+			} catch (NamingException e) {
+				log.warn("Error occured during initing property reader", e);
+			}
+		}
+		return props;
+	}
+	
 	public static MicroserviceMsgserviceFactory getInstance(String serviceName) {
 		MicroserviceMsgserviceFactory result = null;
 
@@ -52,7 +64,7 @@ public final class MicroserviceMsgserviceFactory {
 		log.debug("Instantiating new MicroserviceMsgservice for {}", serviceName);
 		try {
 			Integer consumers = DEFAULT_NUMBER_OF_CONSUMERS_PER_SERVICE;
-			String consumersString = getJNDIValue(MQ_CONSUMERS_JNDI_NAME);
+			String consumersString = getPropInstance().getProperty(MQ_CONSUMERS_JNDI_NAME);
 			if(consumers != null) {
 				try {
 					consumers = Integer.parseInt(consumersString);
@@ -60,8 +72,8 @@ public final class MicroserviceMsgserviceFactory {
 					log.warn("Invalid integer specified for {}", MQ_CONSUMERS_JNDI_NAME);
 				}
 			}
-			serviceInstance = new MicroserviceMsgservice(getJNDIValue(MQ_HOST_JNDI_NAME), "amq.headers", serviceName, 
-					inHandlers, consumers, getJNDIValue(MQ_USER_JNDI_NAME), getJNDIValue(MQ_PASS_JNDI_NAME));
+			serviceInstance = new MicroserviceMsgservice(getPropInstance().getProperty(MQ_HOST_JNDI_NAME), "amq.headers", serviceName, 
+					inHandlers, consumers, getPropInstance().getProperty(MQ_USER_JNDI_NAME), getPropInstance().getProperty(MQ_PASS_JNDI_NAME));
 		} catch (IOException e) {
 			throw new RuntimeException("Unable to instantiate MicroserviceMsgservice", e);
 		}
@@ -70,16 +82,5 @@ public final class MicroserviceMsgserviceFactory {
 	
 	public MicroserviceMsgservice getMicroserviceMsgservice() {
 		return serviceInstance;
-	}
-	
-	private static String getJNDIValue(String var) {
-		String result;
-		try {
-			Context ctx = new InitialContext();
-			result =  (String) ctx.lookup("java:comp/env/" + var);
-		} catch (NamingException ex) {
-			result = "";
-		}
-		return result;
 	}
 }
