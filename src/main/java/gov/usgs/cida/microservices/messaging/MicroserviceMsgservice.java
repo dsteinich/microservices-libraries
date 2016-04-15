@@ -231,20 +231,41 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	
 	/**
 	 * 
-	 * @param queue the queye to pull a message from
+	 * @param queue the queue to pull a message from
 	 * @param consumeMessage true to consume message, false to leave message in queue
+	 * @param timeoutMillis number of millis to wait for a message to be available
 	 * @return
 	 */
-	public byte[] getMessage(String queue, boolean consumeMessage) {
+	public byte[] getMessage(String queue, boolean consumeMessage, int timeoutMillis) {
 		byte[] result = null;
 		try {
 			Channel channel = getChannel();
-			GetResponse resp = channel.basicGet(queue, false);
+			GetResponse resp = null;
+			long endTime = System.currentTimeMillis() + timeoutMillis;
+			
+			while(resp == null) {
+				if(System.currentTimeMillis() > endTime) {
+					throw new RuntimeException("Timeout waiting for message");
+				}
+				
+				resp = channel.basicGet(queue, false);
+			}
+			
 			result = resp.getBody();
 			channel.close();
 		} catch (Exception e) {
 		}
 		
 		return result;
+	}
+	
+	/**
+	 * Get the next message in the queue. Will wait 5 seconds for a message to show.
+	 * @param queue the queue to pull a message from
+	 * @param consumeMessage true to consume message, false to leave message in queue
+	 * @return
+	 */
+	public byte[] getMessage(String queue, boolean consumeMessage) {
+		return getMessage(queue, consumeMessage, 5000);
 	}
 }
