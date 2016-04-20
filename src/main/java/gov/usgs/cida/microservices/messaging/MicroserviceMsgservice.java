@@ -74,13 +74,15 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 
 		for (Class<? extends MicroserviceHandler> clazz : inHandlers) {
 			String queueName = null;
+			Channel channel = null;
 			try {
-				Channel channel = getChannel();
+				channel = getChannel();
 				DeclareOk ack = channel.queueDeclare(serviceName + "." + clazz.getSimpleName(), false, false, true, null);
 				queueName = ack.getQueue();
-				channel.close();
 			} catch (Exception e) {
 				log.error("Could not declare queue", e);
+			} finally {
+				quietClose(channel);
 			}
 			if (null != queueName) {
 				autoBindConsumer(queueName, clazz);
@@ -95,6 +97,12 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		log.trace("Init Channel {} of {} for service {}", channel.getChannelNumber(), conn.getChannelMax(), this.serviceName);
 		return channel;
 	}
+	
+	public static void quietClose(Channel c) {
+		try {
+			c.close();
+		} catch (Exception e) {}
+	}
 
 	@Override
 	public void close() throws IOException {
@@ -107,9 +115,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	}
 	
 	private void autoBindConsumer(String queueName, Class<? extends MicroserviceHandler> clazz) {
+		Channel bindingChannel = null;
 		try {
 			MicroserviceHandler bindingHandler = clazz.newInstance();
-			Channel bindingChannel = getChannel();
+			bindingChannel = getChannel();
 			Map<String, Object> defaultBinding = new HashMap<>();
 			defaultBinding.put("x-match", "all");
 			defaultBinding.put("msrvServiceName", this.serviceName);
@@ -118,7 +127,6 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			for (Map<String, Object> bindingOptions : bindingHandler.getBindings(serviceName)) {
 				bindingChannel.queueBind(queueName, this.exchange, "", bindingOptions);
 			}
-			bindingChannel.close();
 
 			for (int i = 0; i < numberOfConsumers; i++) {
 				//new instances just in case someone makes a non-threadsafe handler
@@ -131,6 +139,8 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			}
 		} catch (Exception e) {
 			log.error("Could not register consumers", e);
+		} finally {
+			quietClose(bindingChannel);
 		}
 	}
 	
@@ -181,13 +191,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		} catch (Exception e) {
 			log.error("Could not send message {}", message);
 		} finally {
-			try {
-				if (null != channel) {
-					channel.close();
-				}
-			} catch (Exception e) {
-				log.error("Could not close sending channel");
-			}
+			quietClose(channel);
 		}
 	}
 	
@@ -209,8 +213,9 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	 * @param eventType
 	 */
 	public void declareQueueForType(String serviceName, String eventType, int messageExpiry, int queueExpiry) {
+		Channel channel = null;
 		try {
-			Channel channel = getChannel();
+			channel = getChannel();
 			Map<String, Object> queueOptions = new HashMap<>();
 			queueOptions.put("x-message-ttl", messageExpiry); //All queues defined here expire messages in 10 minutes
 			queueOptions.put("x-expires", queueExpiry); //All queues expire in 20 minutes
@@ -223,9 +228,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			bindingOptions.put("eventType", eventType);
 
 			channel.queueBind(serviceName, this.exchange, "", bindingOptions);
-			channel.close();
 		} catch (Exception e) {
 			log.error("Could not declare queue", e);
+		} finally {
+			quietClose(channel);
 		}
 	}
 	
@@ -238,8 +244,9 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 	 */
 	public byte[] getMessage(String queue, boolean consumeMessage, int timeoutMillis) {
 		byte[] result = null;
+		Channel channel = null;
 		try {
-			Channel channel = getChannel();
+			channel = getChannel();
 			GetResponse resp = null;
 			long endTime = System.currentTimeMillis() + timeoutMillis;
 			
@@ -252,8 +259,9 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			}
 			
 			result = resp.getBody();
-			channel.close();
 		} catch (Exception e) {
+		} finally {
+			quietClose(channel);
 		}
 		
 		return result;
