@@ -217,9 +217,9 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		try {
 			channel = getChannel();
 			Map<String, Object> queueOptions = new HashMap<>();
-			queueOptions.put("x-message-ttl", messageExpiry); //All queues defined here expire messages in 10 minutes
-			queueOptions.put("x-expires", queueExpiry); //All queues expire in 20 minutes
-			DeclareOk ack = channel.queueDeclare(serviceName, true, false, true, queueOptions);
+			queueOptions.put("x-message-ttl", messageExpiry);
+			queueOptions.put("x-expires", queueExpiry); 
+			DeclareOk ack = channel.queueDeclare(serviceName, false, false, true, queueOptions);
 			ack.getQueue();
 
 			Map<String, Object> bindingOptions = new HashMap<>();
