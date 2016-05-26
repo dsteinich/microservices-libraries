@@ -107,13 +107,20 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient,
 	public void initialize() throws MqConnectionException {
 		Config config = new Config().withRecoveryPolicy(RecoveryPolicies.recoverAlways());
 		
+		int iterationCount = 0; //used to scale back logging of failed connections.
+		int nextLogIteration = 1;
 		while(conn == null) {
+			iterationCount ++;
 			try {
 				conn = Connections.create(conFactory, config);
 			} catch(IOException e) {
 				if(waitForConnection) {
-					log.warn("Could not establish a connection for service {}, retrying again in {}ms", 
-							serviceName, connectionRetryTimeMs);
+					if(iterationCount == nextLogIteration) {
+						nextLogIteration = nextLogIteration * 2;
+						int timeTilNextLog = (int) ((nextLogIteration - iterationCount) * connectionRetryTimeMs);
+						log.warn("Failed to connect to service {}, retrying every {}sec (failures silenced for next {}sec)", 
+								serviceName, connectionRetryTimeMs/1000, timeTilNextLog/1000);
+					}
 					try {
 						Thread.sleep(connectionRetryTimeMs);
 					} catch (InterruptedException e1) {

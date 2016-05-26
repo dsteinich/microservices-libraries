@@ -27,7 +27,7 @@ public final class MicroserviceMsgserviceFactory {
 	private final static Integer DEFAULT_NUMBER_OF_CONSUMERS_PER_SERVICE = 10;
 	
 	public final static String MQ_RETRY_RATE_JNDI_NAME = "messaging.connection.retry.rate.ms";
-	private final static Integer DEFAULT_RETRY_RATE = 900000; //15 minutes
+	private final static Integer DEFAULT_RETRY_RATE = 15000; //15 seconds
 	
 	public static HashMap<String, MicroserviceMsgserviceFactory> FACTORY_INSTANCES = new HashMap<>();
 
