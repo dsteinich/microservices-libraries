@@ -3,8 +3,10 @@ package gov.usgs.cida.microservices.messaging;
 import com.google.gson.Gson;
 import com.rabbitmq.client.AMQP;
 
+import gov.usgs.cida.microservices.api.messaging.MessageBasedMicroservice;
 import gov.usgs.cida.microservices.api.messaging.MessagingClient;
 import gov.usgs.cida.microservices.api.messaging.MicroserviceHandler;
+import gov.usgs.cida.microservices.api.messaging.exception.MqConnectionException;
 
 import com.rabbitmq.client.AMQP.Queue.DeclareOk;
 
@@ -23,6 +25,8 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Consumer;
 import com.rabbitmq.client.GetResponse;
+import com.rabbitmq.client.ShutdownListener;
+import com.rabbitmq.client.ShutdownSignalException;
 
 import java.io.Closeable;
 import java.util.HashMap;
@@ -32,47 +36,107 @@ import java.util.Set;
  *
  * @author thongsav
  */
-public final class MicroserviceMsgservice implements Closeable, MessagingClient {
+public final class MicroserviceMsgservice implements Closeable, MessagingClient, MessageBasedMicroservice {
 
 	private static final Logger log = LoggerFactory.getLogger(MicroserviceMsgservice.class);
 
 	private final String host;
 	private final String exchange;
 	private final String username;
-	private final String password;
+	private final byte[] password;
 
 	private final ConnectionFactory conFactory;
-	private final Connection conn;
 
 	private final String serviceName;
 	private final Set<Class<? extends MicroserviceHandler>> microserviceHandlers;
-	
+	private final ShutdownListener reconnectHandler;
 	private Integer numberOfConsumers;
+	private Connection conn;
 	
-	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password) throws IOException {
+	private long connectionRetryTimeMs;
+	private boolean waitForConnection;
+	private boolean reconnecting;
+
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password) {
+		this(host, exchange, inServiceName, inHandlers, numberOfConsumers, username, password, 0l, false, false);
+	}
+	
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password, long connectionRetryTimeMs, boolean waitForConnection, boolean reconnecting) {
 		this.host = host;
 		this.exchange = exchange;
 		this.username = username;
-		this.password = password;
+		this.password = password.getBytes();
 		this.numberOfConsumers = numberOfConsumers;
 
+		this.serviceName = inServiceName;
+		this.microserviceHandlers = inHandlers;
+		
+		this.connectionRetryTimeMs = connectionRetryTimeMs;
+		this.waitForConnection = waitForConnection;
+		this.reconnecting = reconnecting;
+		
 		ConnectionFactory factory = new ConnectionFactory();
 		factory.setHost(this.host);
 		factory.setUsername(this.username);
-		factory.setPassword(this.password);
+		factory.setPassword(new String(this.password));
 		
 		factory.setExceptionHandler(new MicroserviceExceptionHandler());
 
 		this.conFactory = factory;
+		
+		this.reconnectHandler = new ShutdownListener() {
+			public void shutdownCompleted(ShutdownSignalException cause)
+			{
+				log.info("Lost connection to MQ, reconnection process starting.");
+				try { conn.close(); } catch (Exception e) {} //try to close once more just in case
+				conn.removeShutdownListener(reconnectHandler);
+				conn = null;
+				try {
+					initialize();
+				} catch (MqConnectionException e) {
+					log.error("Could not reestablish a connection for {}", serviceName, e);
+				}
+			}
+		};
+	}
 
+	/* (non-Javadoc)
+	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#initialize()
+	 */
+	@Override
+	public void initialize() throws MqConnectionException {
 		Config config = new Config().withRecoveryPolicy(RecoveryPolicies.recoverAlways());
-		Connection connection = Connections.create(conFactory, config);
-		conn = connection;
-
-		this.serviceName = inServiceName;
-		this.microserviceHandlers = inHandlers;
-
-		for (Class<? extends MicroserviceHandler> clazz : inHandlers) {
+		
+		int iterationCount = 0; //used to scale back logging of failed connections.
+		int nextLogIteration = 1;
+		while(conn == null) {
+			iterationCount ++;
+			try {
+				conn = Connections.create(conFactory, config);
+			} catch(IOException e) {
+				if(waitForConnection) {
+					if(iterationCount == nextLogIteration) {
+						nextLogIteration = nextLogIteration * 2;
+						int timeTilNextLog = (int) ((nextLogIteration - iterationCount) * connectionRetryTimeMs);
+						log.warn("Failed to connect to service {}, retrying every {}sec (failures silenced for next {}sec)", 
+								serviceName, connectionRetryTimeMs/1000, timeTilNextLog/1000);
+					}
+					try {
+						Thread.sleep(connectionRetryTimeMs);
+					} catch (InterruptedException e1) {
+						throw new MqConnectionException("Thread interrupted waiting for MQ connection", e1);
+					}
+				} else {
+					throw new MqConnectionException("Unable to get create MQ connection", e);
+				}
+			}
+		}
+		
+		if(reconnecting) {
+			conn.addShutdownListener(this.reconnectHandler);
+		}
+		
+		for (Class<? extends MicroserviceHandler> clazz : this.microserviceHandlers) {
 			String queueName = null;
 			Channel channel = null;
 			try {
@@ -88,11 +152,19 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 				autoBindConsumer(queueName, clazz);
 			}
 		}
-
-		log.debug("Service initialized with name {} and {} handlers", this.serviceName, this.microserviceHandlers.size());
+		
+		if(this.microserviceHandlers.size() > 0) { //only log info if this service has handlers, otherwise too chatty
+			log.info("Service initialized with name {} and {} handlers", this.serviceName, this.microserviceHandlers.size());
+		} else {
+			log.debug("Service initialized with name {} and no handlers", this.serviceName);
+		}
 	}
+	
 
 	public Channel getChannel() throws IOException {
+		if(conn == null) {
+			throw new IllegalStateException("No connection exists, has initialize() been called?");
+		}
 		Channel channel = conn.createChannel();
 		log.trace("Init Channel {} of {} for service {}", channel.getChannelNumber(), conn.getChannelMax(), this.serviceName);
 		return channel;
@@ -110,6 +182,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		this.conn.close(3000);
 	}
 	
+	/* (non-Javadoc)
+	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#getServiceName()
+	 */
+	@Override
 	public String getServiceName() {
 		return this.serviceName;
 	}
@@ -144,6 +220,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		}
 	}
 	
+	/* (non-Javadoc)
+	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#bindConsumer(java.lang.String, gov.usgs.cida.microservices.api.messaging.MicroserviceHandler)
+	 */
+	@Override
 	public void bindConsumer(String queueName, MicroserviceHandler bindingHandler) {
 		try {
 			Channel bindingChannel = getChannel();
@@ -235,13 +315,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		}
 	}
 	
-	/**
-	 * 
-	 * @param queue the queue to pull a message from
-	 * @param consumeMessage true to consume message, false to leave message in queue
-	 * @param timeoutMillis number of millis to wait for a message to be available
-	 * @return
+	/* (non-Javadoc)
+	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#getMessage(java.lang.String, boolean, int)
 	 */
+	@Override
 	public byte[] getMessage(String queue, boolean consumeMessage, int timeoutMillis) {
 		byte[] result = null;
 		Channel channel = null;
@@ -260,6 +337,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 			
 			result = resp.getBody();
 		} catch (Exception e) {
+			log.warn("Error trying to retrieve message from {}", queue, e);
 		} finally {
 			quietClose(channel);
 		}
@@ -267,12 +345,10 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient 
 		return result;
 	}
 	
-	/**
-	 * Get the next message in the queue. Will wait 5 seconds for a message to show.
-	 * @param queue the queue to pull a message from
-	 * @param consumeMessage true to consume message, false to leave message in queue
-	 * @return
+	/* (non-Javadoc)
+	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#getMessage(java.lang.String, boolean)
 	 */
+	@Override
 	public byte[] getMessage(String queue, boolean consumeMessage) {
 		return getMessage(queue, consumeMessage, 5000);
 	}
