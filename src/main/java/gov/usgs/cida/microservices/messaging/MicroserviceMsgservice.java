@@ -179,6 +179,7 @@ public final class MicroserviceMsgservice implements Closeable, MessagingClient,
 	@Override
 	public void close() throws IOException {
 		log.debug("Service {} closing...", this.serviceName);
+		this.conn.removeShutdownListener(reconnectHandler);
 		this.conn.close(3000);
 	}
 	
