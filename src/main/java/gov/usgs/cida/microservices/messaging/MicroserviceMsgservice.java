@@ -36,7 +36,7 @@ import java.util.Set;
  *
  * @author thongsav
  */
-public final class MicroserviceMsgservice implements Closeable, MessagingClient, MessageBasedMicroservice {
+public class MicroserviceMsgservice implements Closeable, MessagingClient, MessageBasedMicroservice {
 
 	private static final Logger log = LoggerFactory.getLogger(MicroserviceMsgservice.class);
 
