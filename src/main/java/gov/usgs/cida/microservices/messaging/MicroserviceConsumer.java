@@ -50,7 +50,7 @@ public class MicroserviceConsumer extends DefaultConsumer  {
 		String requestId = MessageUtils.getStringFromHeaders(params, "requestId");
 		String serviceRequestId = MessageUtils.getStringFromHeaders(params, "serviceRequestId");
 		try {
-			this.handler.handle(requestId, serviceRequestId, params, body);
+			this.handler.handle(requestId, serviceRequestId, params, body, this.msgService);
 
 			//TODO turn off autoack?
 			//For error handlers, we probably want autoack off so that there can be multiple error handlers
