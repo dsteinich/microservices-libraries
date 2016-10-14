@@ -30,6 +30,7 @@ import com.rabbitmq.client.ShutdownSignalException;
 
 import java.io.Closeable;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -56,6 +57,8 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 	private long connectionRetryTimeMs;
 	private boolean waitForConnection;
 	private boolean reconnecting;
+	
+	private List<Channel> boundConsumerChannels;
 
 	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password) {
 		this(host, exchange, inServiceName, inHandlers, numberOfConsumers, username, password, 0l, false, false);
@@ -179,6 +182,9 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 	@Override
 	public void close() throws IOException {
 		log.debug("Service {} closing...", this.serviceName);
+		for(Channel c : boundConsumerChannels) {
+			quietClose(c);
+		}
 		this.conn.removeShutdownListener(reconnectHandler);
 		this.conn.close(3000);
 	}
@@ -213,6 +219,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 				channel.basicConsume(queueName, true, consumer);
 				log.debug("Channel {} now listening for {} messages, handled by {} on service {}", 
 						channel.getChannelNumber(), queueName, clazz.getSimpleName(), this.serviceName);
+				boundConsumerChannels.add(channel);
 			}
 		} catch (Exception e) {
 			log.error("Could not register consumers", e);
@@ -310,7 +317,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 
 			channel.queueBind(serviceName, this.exchange, "", bindingOptions);
 		} catch (Exception e) {
-			log.error("Could not declare queue", e);
+			throw new RuntimeException("Coult not declare queue: " + e.getMessage(), e);
 		} finally {
 			quietClose(channel);
 		}
