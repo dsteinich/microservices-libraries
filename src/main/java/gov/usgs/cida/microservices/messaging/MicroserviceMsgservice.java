@@ -186,7 +186,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 			quietClose(c);
 		}
 		this.conn.removeShutdownListener(reconnectHandler);
-		this.conn.close(3000);
+		this.conn.close(30000);
 	}
 	
 	/* (non-Javadoc)
