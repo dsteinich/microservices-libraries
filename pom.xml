@@ -4,7 +4,7 @@
 
 	<artifactId>microservices-libraries</artifactId>
 	<groupId>gov.usgs.cida</groupId>
-	<version>0.3.2-SNAPSHOT</version>
+	<version>0.3.2</version>
 
 	<packaging>jar</packaging>
 
@@ -49,7 +49,8 @@
 		<url>https://github.com/USGS-CIDA/microservices-libraries</url>
 		<connection>scm:git:ssh://git@github.com/USGS-CIDA/microservices-libraries.git</connection>
 		<developerConnection>scm:git:ssh://git@github.com/USGS-CIDA/microservices-libraries.git</developerConnection>
-	</scm>
+	  <tag>microservices-libraries-0.3.2</tag>
+  </scm>
 
 	<distributionManagement>
 		<repository>
