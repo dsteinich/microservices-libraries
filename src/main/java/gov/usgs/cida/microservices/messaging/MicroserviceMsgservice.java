@@ -29,6 +29,7 @@ import com.rabbitmq.client.ShutdownListener;
 import com.rabbitmq.client.ShutdownSignalException;
 
 import java.io.Closeable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
@@ -109,6 +110,8 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 	@Override
 	public void initialize() throws MqConnectionException {
 		Config config = new Config().withRecoveryPolicy(RecoveryPolicies.recoverAlways());
+
+		boundConsumerChannels = new ArrayList<>();
 		
 		int iterationCount = 0; //used to scale back logging of failed connections.
 		int nextLogIteration = 1;
@@ -277,7 +280,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 					new Gson().toJson(modHeaders, Map.class), this.serviceName);
 			channel.basicPublish(exchange, "", props, message);
 		} catch (Exception e) {
-			log.error("Could not send message {}", message);
+			log.error("Could not send message", e);
 		} finally {
 			quietClose(channel);
 		}
