@@ -41,7 +41,7 @@ import java.util.Set;
 public class MicroserviceMsgservice implements Closeable, MessagingClient, MessageBasedMicroservice {
 
 	private static final Logger log = LoggerFactory.getLogger(MicroserviceMsgservice.class);
-
+	
 	private final String host;
 	private final String exchange;
 	private final String username;
@@ -53,6 +53,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 	private final Set<Class<? extends MicroserviceHandler>> microserviceHandlers;
 	private final ShutdownListener reconnectHandler;
 	private Integer numberOfConsumers;
+	private String messageTimeout;
 	private Connection conn;
 	
 	private long connectionRetryTimeMs;
@@ -61,11 +62,11 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 	
 	private List<Channel> boundConsumerChannels;
 
-	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password) {
-		this(host, exchange, inServiceName, inHandlers, numberOfConsumers, username, password, 0l, false, false);
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer messageTimeoutMs, Integer numberOfConsumers, String username, String password) {
+		this(host, exchange, inServiceName, inHandlers, messageTimeoutMs, numberOfConsumers, username, password, 0l, false, false);
 	}
 	
-	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer numberOfConsumers, String username, String password, long connectionRetryTimeMs, boolean waitForConnection, boolean reconnecting) {
+	public MicroserviceMsgservice(String host, String exchange, String inServiceName, Set<Class<? extends MicroserviceHandler>> inHandlers, Integer messageTimeoutMs, Integer numberOfConsumers, String username, String password, long connectionRetryTimeMs, boolean waitForConnection, boolean reconnecting) {
 		this.host = host;
 		this.exchange = exchange;
 		this.username = username;
@@ -78,6 +79,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 		this.connectionRetryTimeMs = connectionRetryTimeMs;
 		this.waitForConnection = waitForConnection;
 		this.reconnecting = reconnecting;
+		this.messageTimeout = messageTimeoutMs.toString();
 		
 		ConnectionFactory factory = new ConnectionFactory();
 		factory.setHost(this.host);
@@ -273,7 +275,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 			iffPut(modHeaders, "msrvPublishedBy", this.getServiceName());
 			AMQP.BasicProperties props = new AMQP.BasicProperties.Builder()
 				.headers(modHeaders)
-				.expiration("300000") //5 minute expiration time on all sent messages
+				.expiration(messageTimeout) //5 minute expiration time on all sent messages
 				.build();
 			
 			log.trace("Sending message with Headers {} through service {}", 

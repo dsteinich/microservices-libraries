@@ -70,9 +70,9 @@ public final class MicroserviceMsgserviceFactory {
 	 * @return
 	 * @throws MqConnectionException failure to connect
 	 */
-	public MicroserviceMsgservice buildMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers) 
+	public MicroserviceMsgservice buildMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers, Integer messageTimeoutMs) 
 			throws MqConnectionException {
-		return buildMicroserviceMsgservice(inHandlers, false);
+		return buildMicroserviceMsgservice(inHandlers, messageTimeoutMs, false);
 	}
 	
 	/**
@@ -82,9 +82,9 @@ public final class MicroserviceMsgserviceFactory {
 	 * @return
 	 * @throws MqConnectionException 
 	 */
-	public MessageBasedMicroservice buildPersistentMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers) 
+	public MessageBasedMicroservice buildPersistentMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers, Integer messageTimeoutMs) 
 			throws MqConnectionException {
-		return buildMicroserviceMsgservice(inHandlers, true);
+		return buildMicroserviceMsgservice(inHandlers, messageTimeoutMs, true);
 	}
 	
 	/**
@@ -96,7 +96,7 @@ public final class MicroserviceMsgserviceFactory {
 	 * @return
 	 * @throws MqConnectionException 
 	 */
-	private MicroserviceMsgservice buildMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers, 
+	private MicroserviceMsgservice buildMicroserviceMsgservice(Set<Class<? extends MicroserviceHandler>> inHandlers, Integer messageTimeoutMs, 
 			boolean persistent) throws MqConnectionException {
 		log.debug("Instantiating new MicroserviceMsgservice for {}", serviceName);
 		
@@ -122,11 +122,11 @@ public final class MicroserviceMsgserviceFactory {
 
 		if(!persistent) {
 			serviceInstance = new MicroserviceMsgservice(getPropInstance().getProperty(MQ_HOST_JNDI_NAME), "amq.headers", serviceName, 
-					inHandlers, consumers, getPropInstance().getProperty(MQ_USER_JNDI_NAME), getPropInstance().getProperty(MQ_PASS_JNDI_NAME));
+					inHandlers, messageTimeoutMs, consumers, getPropInstance().getProperty(MQ_USER_JNDI_NAME), getPropInstance().getProperty(MQ_PASS_JNDI_NAME));
 			serviceInstance.initialize();
 		} else {
 			serviceInstance = new MicroserviceMsgservice(getPropInstance().getProperty(MQ_HOST_JNDI_NAME), "amq.headers", serviceName, 
-					inHandlers, consumers, getPropInstance().getProperty(MQ_USER_JNDI_NAME), getPropInstance().getProperty(MQ_PASS_JNDI_NAME),
+					inHandlers, messageTimeoutMs, consumers, getPropInstance().getProperty(MQ_USER_JNDI_NAME), getPropInstance().getProperty(MQ_PASS_JNDI_NAME),
 					retryRate, true, true);
 			(new Thread(new Runnable() {
 				@Override
