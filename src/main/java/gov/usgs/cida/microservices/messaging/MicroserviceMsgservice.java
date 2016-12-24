@@ -357,6 +357,22 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 		
 		return result;
 	}
+
+	/* (non-Javadoc)
+	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#deleteMessages(java.lang.String)
+	 */
+	@Override
+	public void deleteMessages(String queue) {
+		Channel channel = null;
+		try {
+			channel = getChannel();
+			channel.queueDelete(queue);
+		} catch (Exception e) {
+			throw new RuntimeException("Coult not declare queue: " + e.getMessage(), e);
+		} finally {
+			quietClose(channel);
+		}
+	}
 	
 	/* (non-Javadoc)
 	 * @see gov.usgs.cida.microservices.messaging.IMesageBasedMicroservice#getMessage(java.lang.String, boolean)

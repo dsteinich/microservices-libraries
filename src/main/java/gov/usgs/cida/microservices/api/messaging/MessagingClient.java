@@ -29,4 +29,9 @@ public interface MessagingClient {
 	 * @return
 	 */
 	byte[] getMessage(String queue, boolean consumeMessage);
+	
+	/**
+	 * Deletes messages associated with a queue
+	 */
+	void deleteMessages(String queue);
 }
