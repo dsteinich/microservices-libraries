@@ -4,7 +4,7 @@
 
 	<artifactId>microservices-libraries</artifactId>
 	<groupId>gov.usgs.cida</groupId>
-	<version>0.4.1-SNAPSHOT</version>
+	<version>0.5</version>
 
 	<packaging>jar</packaging>
 
