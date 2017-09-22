@@ -368,7 +368,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 			channel = getChannel();
 			channel.queueDelete(queue);
 		} catch (Exception e) {
-			throw new RuntimeException("Coult not declare queue: " + e.getMessage(), e);
+			throw new RuntimeException("Could not delete queue: " + e.getMessage(), e);
 		} finally {
 			quietClose(channel);
 		}
