@@ -13,10 +13,6 @@ import com.rabbitmq.client.AMQP.Queue.DeclareOk;
 import java.io.IOException;
 import java.util.Map;
 
-import net.jodah.lyra.Connections;
-import net.jodah.lyra.config.Config;
-import net.jodah.lyra.config.RecoveryPolicies;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,6 +81,7 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 		factory.setHost(this.host);
 		factory.setUsername(this.username);
 		factory.setPassword(new String(this.password));
+		factory.setAutomaticRecoveryEnabled(true);
 		
 		factory.setExceptionHandler(new MicroserviceExceptionHandler());
 
@@ -111,8 +108,6 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 	 */
 	@Override
 	public void initialize() throws MqConnectionException {
-		Config config = new Config().withRecoveryPolicy(RecoveryPolicies.recoverAlways());
-
 		boundConsumerChannels = new ArrayList<>();
 		
 		int iterationCount = 0; //used to scale back logging of failed connections.
@@ -120,8 +115,8 @@ public class MicroserviceMsgservice implements Closeable, MessagingClient, Messa
 		while(conn == null) {
 			iterationCount ++;
 			try {
-				conn = Connections.create(conFactory, config);
-			} catch(IOException e) {
+				conn = conFactory.newConnection(serviceName);
+			} catch(Exception e) {
 				if(waitForConnection) {
 					if(iterationCount == nextLogIteration) {
 						nextLogIteration = nextLogIteration * 2;

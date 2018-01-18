@@ -135,14 +135,9 @@
 			<version>2.2.4</version>
 		</dependency>
 		<dependency>
-			<groupId>net.jodah</groupId>
-			<artifactId>lyra</artifactId>
-			<version>0.5.0</version>
-		</dependency>
-		<dependency>
 			<groupId>com.rabbitmq</groupId>
 			<artifactId>amqp-client</artifactId>
-			<version>3.4.3</version>
+			<version>5.1.1</version>
 		</dependency>
 		<dependency>
 			<artifactId>logback-classic</artifactId>
